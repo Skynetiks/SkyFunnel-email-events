@@ -80,7 +80,7 @@ export async function processMessage(message: any) {
 				}
 
 				// console.log("Inserting into EmailEvent...");
-				await query('INSERT INTO "EmailEvent" ("id", "emailId", "eventType", "timestamp") VALUES (uuid_generate_v4(), $1, $2, $3)', [email.id, eventTypeUpper, timestamp]);
+				await query('INSERT INTO "EmailEvent" ("id", "emailId", "eventType", "timestamp", "campaignId") VALUES (uuid_generate_v4(), $1, $2, $3, $4)', [email.id, eventTypeUpper, timestamp, email.emailCampaignId]);
 				// console.log(`Inserted ${eventTypeUpper} event for email ID ${email.id}`);
 
 				if (eventType === "Bounce" || eventType === "Complaint") {
