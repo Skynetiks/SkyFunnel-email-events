@@ -17,9 +17,8 @@ async function processMessages() {
 }
 
 setInterval(processMessages, 10000); 
-
-app.get("/", (_, res) => {
-	res.status(200).send("");
+app.get("/", (req:any, res: any) => {
+  res.sendStatus(200);
 });
 
 app.listen(PORT, () => {
