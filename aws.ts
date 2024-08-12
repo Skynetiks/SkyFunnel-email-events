@@ -81,7 +81,7 @@ export async function processMessage(message: any) {
 
 				// console.log("Inserting into EmailEvent...");
 				await query('INSERT INTO "EmailEvent" ("id", "emailId", "eventType", "timestamp", "campaignId") VALUES (uuid_generate_v4(), $1, $2, $3, $4)', [email.id, eventTypeUpper, timestamp, email.emailCampaignId]);
-				// console.log(`Inserted ${eventTypeUpper} event for email ID ${email.id}`);
+				console.log(`Inserted ${eventTypeUpper} event for email ID ${email.id}`);
 
 				if (eventType === "Bounce" || eventType === "Complaint") {
 					// set isSubscribedToEmail to false where lead.email === destination[0]
@@ -90,7 +90,7 @@ export async function processMessage(message: any) {
 					// console.log("Inserting into SuppressedMail...");
 					await query('INSERT INTO "BlacklistedEmail" ("id", "emailId", "email") VALUES (uuid_generate_v4(), $1, $2)', [email.id, destination[0]]);
 					await query('UPDATE "Email" SET "status" = $1 WHERE "id" = $2 ', ["SUPPRESS", email.id]);
-					// console.log(`Inserted email ID ${email.id} into SuppressedMail`);
+					console.log(`Inserted email ID ${email.id} into SuppressedMail`);
 				}
 			} catch (error) {
 				console.log(error);
