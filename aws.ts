@@ -88,7 +88,7 @@ export async function processMessage(message: any) {
 					await query('UPDATE "Lead" SET "isSubscribedToEmail" = false WHERE "email" = $1', [destination[0]]);
 					// console.log(leadUpdate.rows);
 					// console.log("Inserting into SuppressedMail...");
-					await query('INSERT INTO "BlacklistedEmail" ("id", "emailId", "email") VALUES (uuid_generate_v4(), $1, $2)', [email.id, destination[0]]);
+					await query('INSERT INTO "BlacklistedEmail" ("id", "email") VALUES (uuid_generate_v4(), $1)', [destination[0]]);
 					await query('UPDATE "Email" SET "status" = $1 WHERE "id" = $2 ', ["SUPPRESS", email.id]);
 					console.log(`Inserted email ID ${email.id} into SuppressedMail`);
 				}
