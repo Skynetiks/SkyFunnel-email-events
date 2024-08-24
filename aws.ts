@@ -58,7 +58,7 @@ export async function processMessage(message: any) {
 
 		const eventType = body.eventType;
 
-		if (["Bounce", "Click", "Open", "Reject", "Complaint"].includes(eventType)) {
+		if (["Bounce", "Click", "Open", "Reject", "Complaint", "Delivery"].includes(eventType)) {
 			// console.log(`Processing ${eventType} event:`, body.mail.destination[0]);
 
 			const mail = body.mail as Mail;
