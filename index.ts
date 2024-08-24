@@ -12,6 +12,5 @@ async function processMessages() {
 
 // Run the cron job every 10 seconds
 setInterval(() => {
-  console.log("Invoking processMessages...");
   processMessages();
 }, 10000);
