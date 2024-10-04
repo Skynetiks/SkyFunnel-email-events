@@ -79,6 +79,14 @@ export async function processMessage(message: any) {
 					return;
 				}
 
+				if (eventTypeUpper === "BOUNCE") {
+					const existingBounce = await query('SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2', [email.id, "BOUNCE"]);
+					if (existingBounce.rowCount && existingBounce.rowCount > 0) {
+						console.log(`BOUNCE event already exists for email ID ${email.id}, skipping...`);
+						return;
+					}
+				}
+
 				const existingEvent = await query('SELECT * FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2', [email.id, "DELIVERY"]);
 
 				if (existingEvent.rowCount && existingEvent.rowCount > 0 && eventTypeUpper === "BOUNCE") {
