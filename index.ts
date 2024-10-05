@@ -1,6 +1,7 @@
 import { processMessage, receiveMessages } from "./aws";
 
 async function processMessages() {
+  console.log("Processing messages...");
   const messages = await receiveMessages();
 
   if (messages) {
