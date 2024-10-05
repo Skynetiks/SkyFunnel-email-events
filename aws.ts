@@ -31,7 +31,6 @@ export async function receiveMessages() {
 				VisibilityTimeout: VISIBILITY_TIMEOUT,
 			})
 		);
-		console.log("Messages recieved: "+data.Messages?.length) 
 		return data.Messages;
 	} catch (error) {
 		console.error('Error receiving messages from SQS:', error);
