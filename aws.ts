@@ -1,4 +1,8 @@
-import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from "@aws-sdk/client-sqs";
+import {
+  SQSClient,
+  ReceiveMessageCommand,
+  DeleteMessageCommand,
+} from "@aws-sdk/client-sqs";
 import "dotenv/config";
 import { Mail } from "./types";
 import { query } from "./db";
@@ -10,125 +14,191 @@ const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
 const VISIBILITY_TIMEOUT = 50; // in secs
 
 if (!REGION || !QUEUE_URL || !AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-	throw new Error('Missing required environment variables');
+  throw new Error("Missing required environment variables");
 }
 
 const sqsClient = new SQSClient({
-	region: REGION,
-	credentials: {
-		accessKeyId: AWS_ACCESS_KEY_ID,
-		secretAccessKey: AWS_SECRET_ACCESS_KEY,
-	},
-})
+  region: REGION,
+  credentials: {
+    accessKeyId: AWS_ACCESS_KEY_ID,
+    secretAccessKey: AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 export async function receiveMessages() {
-	try {
-		const data = await sqsClient.send(
-			new ReceiveMessageCommand({
-				QueueUrl: QUEUE_URL,
-				MaxNumberOfMessages: 10,
-				WaitTimeSeconds: 20,
-				VisibilityTimeout: VISIBILITY_TIMEOUT,
-			})
-		);
-		return data.Messages;
-	} catch (error) {
-		console.error('Error receiving messages from SQS:', error);
-		return [];
-	}
+  try {
+    const data = await sqsClient.send(
+      new ReceiveMessageCommand({
+        QueueUrl: QUEUE_URL,
+        MaxNumberOfMessages: 10,
+        WaitTimeSeconds: 20,
+        VisibilityTimeout: VISIBILITY_TIMEOUT,
+      })
+    );
+    return data.Messages;
+  } catch (error) {
+    console.error("Error receiving messages from SQS:", error);
+    return [];
+  }
 }
 
 export async function deleteMessage(receiptHandle: string) {
-	try {
-		await sqsClient.send(
-			new DeleteMessageCommand({
-				QueueUrl: QUEUE_URL,
-				ReceiptHandle: receiptHandle,
-			})
-		);
-	} catch (error) {
-		console.error('Error deleting message from SQS:', error);
-	}
+  try {
+    await sqsClient.send(
+      new DeleteMessageCommand({
+        QueueUrl: QUEUE_URL,
+        ReceiptHandle: receiptHandle,
+      })
+    );
+  } catch (error) {
+    console.error("Error deleting message from SQS:", error);
+  }
+}
+
+async function addEmailToBlacklist(email: string) {
+  try {
+    // Check if email is already in blacklist
+    const existingEntry = await query(
+      'SELECT 1 FROM "BlacklistedEmail" WHERE "email" = $1',
+      [email]
+    );
+
+    if (existingEntry.rowCount === 0) {
+      // Insert into BlacklistedEmail if not present
+      await query(
+        'INSERT INTO "BlacklistedEmail" ("id", "email") VALUES (uuid_generate_v4(), $1)',
+        [email]
+      );
+      console.log(`Inserted email ${email} into BlacklistedEmail`);
+    } else {
+      console.log(`Email ${email} is already in BlacklistedEmail`);
+    }
+  } catch (error) {
+    console.error(`Error adding email ${email} to BlacklistedEmail:`, error);
+    throw error;
+  }
+}
+
+async function logEmailEvent(
+  emailId: string,
+  eventType: string,
+  timestamp: string,
+  campaignId: string
+) {
+  try {
+    // Check if the event already exists for the email and event type
+    const existingEvent = await query(
+      'SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2',
+      [emailId, eventType]
+    );
+
+    if (existingEvent.rowCount && existingEvent.rowCount > 0) {
+      console.log(
+        `${eventType} event already exists for email ID ${emailId}, skipping insertion...`
+      );
+      return;
+    }
+
+    // Insert a new event if it doesn't already exist
+    await query(
+      'INSERT INTO "EmailEvent" ("id", "emailId", "eventType", "timestamp", "campaignId") VALUES (uuid_generate_v4(), $1, $2, $3, $4)',
+      [emailId, eventType, timestamp, campaignId]
+    );
+    console.log(`Inserted ${eventType} event for email ID ${emailId}`);
+  } catch (error) {
+    console.error(
+      `Error logging ${eventType} event for email ID ${emailId}:`,
+      error
+    );
+    throw error;
+  }
 }
 
 export async function processMessage(message: any) {
-	if (message.Body) {
-		const body = JSON.parse(message.Body);
+  if (!message.Body) return;
 
-		const eventType = body.eventType;
+  const body = JSON.parse(message.Body);
+  const eventType = body.eventType;
 
-		if (["Bounce", "Click", "Open", "Reject", "Complaint", "Delivery"].includes(eventType)) {
-			// console.log(`Processing ${eventType} event:`, body.mail.destination[0]);
+  // Check if the eventType is one we want to process
+  if (
+    !["Bounce", "Click", "Open", "Reject", "Complaint", "Delivery"].includes(
+      eventType
+    )
+  ) {
+    console.log(`Unsupported event type: ${eventType}`);
+    await deleteMessage(message.ReceiptHandle!);
+    return;
+  }
 
-			const mail = body.mail as Mail;
-			const { messageId, timestamp, destination } = mail;
-			// console.log('Message ID:', messageId);
-			// console.log('Timestamp:', timestamp);
-			// console.log('Destination:', destination);
+  const mail = body.mail as Mail;
+  const { messageId, timestamp, destination } = mail;
+  const eventTypeUpper = eventType.toUpperCase();
 
-			const eventTypeUpper = eventType.toUpperCase();
+  try {
+    // Retrieve the email based on messageId
+    const result = await query(
+      'SELECT * FROM "Email" WHERE "awsMessageId" = $1',
+      [messageId]
+    );
+    const email = result.rows[0];
 
-			try {
-				const result = await query('SELECT * FROM "Email" WHERE "awsMessageId" = $1', [messageId]);
-				const email = result.rows[0];
-				// console.log(email);
-				if (!email) {
-					console.log(`Email with message ID ${messageId} does not exist in the Email table.`);
-					await deleteMessage(message.ReceiptHandle!);
-					return;
-				}
+    if (!email) {
+      console.log(
+        `Email with message ID ${messageId} does not exist in the Email table.`
+      );
+      await deleteMessage(message.ReceiptHandle!);
+      return;
+    }
 
-				if (eventTypeUpper === "BOUNCE") {
-					const existingBounce = await query('SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2', [email.id, "BOUNCE"]);
-					if (existingBounce.rowCount && existingBounce.rowCount > 0) {
-						console.log(`BOUNCE event already exists for email ID ${email.id}, skipping...`);
-						return;
-					}
-				}
+    // Handle updating from DELIVERY to BOUNCE
+    if (eventTypeUpper === "BOUNCE") {
+      const deliveryEvent = await query(
+        'SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2',
+        [email.id, "DELIVERY"]
+      );
+      if (deliveryEvent.rowCount && deliveryEvent.rowCount > 0) {
+        await query(
+          'UPDATE "EmailEvent" SET "eventType" = $1, "timestamp" = $2 WHERE "emailId" = $3 AND "eventType" = $4',
+          [eventTypeUpper, timestamp, email.id, "DELIVERY"]
+        );
+        console.log(
+          `Updated event type from DELIVERY to BOUNCE for email ID ${email.id}`
+        );
+      }
+    }
 
-				if (eventTypeUpper === "OPEN") {
-					const existingOpen = await query('SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2', [email.id, "OPEN"]);
-					if (existingOpen.rowCount && existingOpen.rowCount > 0) {
-						console.log(`OPEN event already exists for email ID ${email.id}, skipping...`);
-						return;
-					}
-				}
+    // Log the event, with existing event checks handled in logEmailEvent
+    await logEmailEvent(
+      email.id,
+      eventTypeUpper,
+      timestamp,
+      email.emailCampaignId
+    );
 
-				const existingEvent = await query('SELECT * FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2', [email.id, "DELIVERY"]);
+    // Unsubscribe lead if "Complaint"
+    if (eventType === "Complaint") {
+      await query(
+        'UPDATE "Lead" SET "isSubscribedToEmail" = false WHERE "email" = $1',
+        [destination[0]]
+      );
+      console.log(`Updated subscription status for email ${destination[0]}`);
+    }
 
-				if (existingEvent.rowCount && existingEvent.rowCount > 0 && eventTypeUpper === "BOUNCE") {
-					await query('UPDATE "EmailEvent" SET "eventType" = $1, "timestamp" = $2 WHERE "emailId" = $3 AND "eventType" = $4', [eventTypeUpper, timestamp, email.id, "DELIVERY"]);
-					console.log(`Updated event type from DELIVERY to BOUNCE for email ID ${email.id}`);
-				} else {
-					// console.log("Inserting into EmailEvent...");
-					await query('INSERT INTO "EmailEvent" ("id", "emailId", "eventType", "timestamp", "campaignId") VALUES (uuid_generate_v4(), $1, $2, $3, $4)', [email.id, eventTypeUpper, timestamp, email.emailCampaignId]);
-					console.log(`Inserted ${eventTypeUpper} event for email ID ${email.id}`);
-				}
+    // For both "Bounce" and "Complaint", proceed with blacklisting and status update
+    if (["Bounce", "Complaint"].includes(eventType)) {
+      await addEmailToBlacklist(destination[0]);
 
-				if (eventType === "Bounce" || eventType === "Complaint") {
-					// set isSubscribedToEmail to false where lead.email === destination[0]
-					await query('UPDATE "Lead" SET "isSubscribedToEmail" = false WHERE "email" = $1', [destination[0]]);
-					// console.log(leadUpdate.rows);
-					// console.log("Inserting into SuppressedMail...");					
-
-					const existingBlacklistEntry = await query('SELECT 1 FROM "BlacklistedEmail" WHERE "email" = $1', [destination[0]]);
-
-					if (existingBlacklistEntry.rowCount === 0) {
-						await query('INSERT INTO "BlacklistedEmail" ("id", "email") VALUES (uuid_generate_v4(), $1)', [destination[0]]);
-						console.log(`Inserted email ${destination[0]} into BlacklistedEmail`);
-					} else {
-						console.log(`Email ${destination[0]} is already in BlacklistedEmail`);
-					}
-
-					await query('UPDATE "Email" SET "status" = $1 WHERE "id" = $2', ["SUPPRESS", email.id]);
-					console.log(`Updated email ID ${email.id} status to SUPPRESS`);
-				}
-			} catch (error) {
-				console.log(error);
-				return;
-			}
-		}
-
-		await deleteMessage(message.ReceiptHandle!);
-	}
+      await query('UPDATE "Email" SET "status" = $1 WHERE "id" = $2', [
+        "SUPPRESS",
+        email.id,
+      ]);
+      console.log(`Updated email ID ${email.id} status to SUPPRESS`);
+    }
+  } catch (error) {
+    console.error(`Error processing message for email ID ${messageId}:`, error);
+  } finally {
+    // Delete the message from the queue
+    await deleteMessage(message.ReceiptHandle!);
+  }
 }
