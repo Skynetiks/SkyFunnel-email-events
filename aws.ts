@@ -114,7 +114,7 @@ async function logEmailEvent(
   }
 }
 
-async function addToValidatedEmails(email: string, status: string) {
+async function addToValidatedEmails(email: string,timestamp: string, status: string) {
   try {
     // Check if email is already in ValidatedEmails
     const existingEntry = await query(
@@ -131,8 +131,8 @@ async function addToValidatedEmails(email: string, status: string) {
       console.log(`Inserted email ${email} into ValidatedEmail with status ${status}`);
     } else {
       await query(
-        'UPDATE "ValidatedEmail" SET "emailStatus" = $1 WHERE "email" = $2',
-        [status, email]
+        'UPDATE "ValidatedEmail" SET "emailStatus" = $1, "timestamp" = $2 WHERE "email" = $3',
+        [status, timestamp,email]
       )
       console.log(`Updated email ${email} in ValidatedEmails with status ${status}`);
     }
@@ -183,12 +183,12 @@ export async function processMessage(message: any) {
       await addEmailToBlacklist(destination[0]);
 
       // Add to validated emails
-      addToValidatedEmails(destination[0], "INVALID");
+      addToValidatedEmails(destination[0], timestamp, "INVALID");
 
       // Set all leads with email as invalid
       await query(
-        'UPDATE "Lead" SET "isEmailValid" = INVALID WHERE "email" = $1',
-        [destination[0]]
+        'UPDATE "Lead" SET "isEmailValid" = $1 WHERE "email" = $2',
+        ['INVALID', destination[0]]
       );
       console.log(`Updated all leads validation status for email ${destination[0]}`);
 
