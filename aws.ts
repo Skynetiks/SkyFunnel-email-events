@@ -118,7 +118,7 @@ async function addToValidatedEmails(email: string, status: string) {
   try {
     // Check if email is already in ValidatedEmails
     const existingEntry = await query(
-      'SELECT 1 FROM "ValidatedEmails" WHERE "email" = $1',
+      'SELECT 1 FROM "ValidatedEmail" WHERE "email" = $1',
       [email]
     );
 
@@ -128,7 +128,7 @@ async function addToValidatedEmails(email: string, status: string) {
         'INSERT INTO "ValidatedEmail" ("id", "taskId", "email", "emailStatus") VALUES (uuid_generate_v4(), $1, $2, $3)',
         ['00', email, status]
       );
-      console.log(`Inserted email ${email} into ValidatedEmails with status ${status}`);
+      console.log(`Inserted email ${email} into ValidatedEmail with status ${status}`);
     } else {
       await query(
         'UPDATE "ValidatedEmail" SET "emailStatus" = $1 WHERE "email" = $2',
