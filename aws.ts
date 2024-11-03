@@ -131,7 +131,7 @@ async function addToValidatedEmails(email: string,timestamp: string, status: str
       console.log(`Inserted email ${email} into ValidatedEmail with status ${status}`);
     } else {
       await query(
-        'UPDATE "ValidatedEmail" SET "emailStatus" = $1, "timestamp" = $2 WHERE "email" = $3',
+        'UPDATE "ValidatedEmail" SET "emailStatus" = $1, "createdAt" = $2 WHERE "email" = $3',
         [status, timestamp,email]
       )
       console.log(`Updated email ${email} in ValidatedEmails with status ${status}`);
