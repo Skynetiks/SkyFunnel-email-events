@@ -151,8 +151,15 @@ export async function processMessage(message: any) {
       return;
     }
 
-    // Handle updating from DELIVERY to BOUNCE
     if (eventTypeUpper === "BOUNCE") {
+
+      // Add to validated emails
+      await query(
+        'INSERT INTO "ValidatedEmail" ("id", "taskId", "email", "emailStatus") VALUES (uuid_generate_v4(), $1, $2, $3)',
+        ['00', email, 'INVALID']
+      );
+
+      // Handle updating from DELIVERY to BOUNCE
       const deliveryEvent = await query(
         'SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2',
         [email.id, "DELIVERY"]
