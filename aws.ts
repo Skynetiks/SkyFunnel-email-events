@@ -159,6 +159,13 @@ export async function processMessage(message: any) {
         ['00', email, 'INVALID']
       );
 
+      // Set all leads with email as invalid
+      await query(
+        'UPDATE "Lead" SET "isEmailValid" = false WHERE "email" = $1',
+        [destination[0]]
+      );
+      console.log(`Updated all leads validation status for email ${destination[0]}`);
+
       // Handle updating from DELIVERY to BOUNCE
       const deliveryEvent = await query(
         'SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2',
