@@ -114,6 +114,34 @@ async function logEmailEvent(
   }
 }
 
+async function addToValidatedEmails(email: string, status: string) {
+  try {
+    // Check if email is already in ValidatedEmails
+    const existingEntry = await query(
+      'SELECT 1 FROM "ValidatedEmails" WHERE "email" = $1',
+      [email]
+    );
+
+    if (existingEntry.rowCount === 0) {
+      // Insert into ValidatedEmails if not present
+      await query(
+        'INSERT INTO "ValidatedEmail" ("id", "taskId", "email", "emailStatus") VALUES (uuid_generate_v4(), $1, $2, $3)',
+        ['00', email, status]
+      );
+      console.log(`Inserted email ${email} into ValidatedEmails with status ${status}`);
+    } else {
+      await query(
+        'UPDATE "ValidatedEmail" SET "emailStatus" = $1 WHERE "email" = $2',
+        [status, email]
+      )
+      console.log(`Updated email ${email} in ValidatedEmails with status ${status}`);
+    }
+  } catch (error) {
+    console.error(`Error adding email ${email} to ValidatedEmails:`, error);
+    throw error;
+  }
+}
+
 export async function processMessage(message: any) {
   if (!message.Body) return;
 
@@ -152,16 +180,14 @@ export async function processMessage(message: any) {
     }
 
     if (eventTypeUpper === "BOUNCE") {
+      await addEmailToBlacklist(destination[0]);
 
       // Add to validated emails
-      await query(
-        'INSERT INTO "ValidatedEmail" ("id", "taskId", "email", "emailStatus") VALUES (uuid_generate_v4(), $1, $2, $3)',
-        ['00', email, 'INVALID']
-      );
+      addToValidatedEmails(destination[0], "INVALID");
 
       // Set all leads with email as invalid
       await query(
-        'UPDATE "Lead" SET "isEmailValid" = false WHERE "email" = $1',
+        'UPDATE "Lead" SET "isEmailValid" = INVALID WHERE "email" = $1',
         [destination[0]]
       );
       console.log(`Updated all leads validation status for email ${destination[0]}`);
@@ -197,11 +223,6 @@ export async function processMessage(message: any) {
         [destination[0]]
       );
       console.log(`Updated subscription status for email ${destination[0]}`);
-    }
-
-    // For both "Bounce" and "Complaint", proceed with blacklisting and status update
-    if (["Bounce", "Complaint"].includes(eventType)) {
-      await addEmailToBlacklist(destination[0]);
 
       await query('UPDATE "Email" SET "status" = $1 WHERE "id" = $2', [
         "SUPPRESS",
@@ -209,6 +230,7 @@ export async function processMessage(message: any) {
       ]);
       console.log(`Updated email ID ${email.id} status to SUPPRESS`);
     }
+
   } catch (error) {
     console.error(`Error processing message for email ID ${messageId}:`, error);
   } finally {
