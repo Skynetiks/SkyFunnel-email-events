@@ -114,7 +114,11 @@ async function logEmailEvent(
   }
 }
 
-async function addToValidatedEmails(email: string,timestamp: string, status: string) {
+async function addToValidatedEmails(
+  email: string,
+  timestamp: string,
+  status: string
+) {
   try {
     // Check if email is already in ValidatedEmails
     const existingEntry = await query(
@@ -126,15 +130,19 @@ async function addToValidatedEmails(email: string,timestamp: string, status: str
       // Insert into ValidatedEmails if not present
       await query(
         'INSERT INTO "ValidatedEmail" ("id", "taskId", "email", "emailStatus") VALUES (uuid_generate_v4(), $1, $2, $3)',
-        ['00', email, status]
+        ["00", email, status]
       );
-      console.log(`Inserted email ${email} into ValidatedEmail with status ${status}`);
+      console.log(
+        `Inserted email ${email} into ValidatedEmail with status ${status}`
+      );
     } else {
       await query(
         'UPDATE "ValidatedEmail" SET "emailStatus" = $1, "createdAt" = $2 WHERE "email" = $3',
-        [status, timestamp,email]
-      )
-      console.log(`Updated email ${email} in ValidatedEmails with status ${status}`);
+        [status, timestamp, email]
+      );
+      console.log(
+        `Updated email ${email} in ValidatedEmails with status ${status}`
+      );
     }
   } catch (error) {
     console.error(`Error adding email ${email} to ValidatedEmails:`, error);
@@ -149,11 +157,7 @@ export async function processMessage(message: any) {
   const eventType = body.eventType;
 
   // Check if the eventType is one we want to process
-  if (
-    !["Bounce", "Click", "Open", "Reject", "Complaint", "Delivery"].includes(
-      eventType
-    )
-  ) {
+  if (!["Bounce", "Complaint"].includes(eventType)) {
     console.log(`Unsupported event type: ${eventType}`);
     await deleteMessage(message.ReceiptHandle!);
     return;
@@ -166,7 +170,7 @@ export async function processMessage(message: any) {
   try {
     // Retrieve the email based on messageId
     const result = await query(
-      'SELECT * FROM "Email" WHERE "awsMessageId" = $1',
+      'SELECT * FROM "Email" WHERE "messageId" = $1',
       [messageId]
     );
     const email = result.rows[0];
@@ -186,26 +190,13 @@ export async function processMessage(message: any) {
       addToValidatedEmails(destination[0], timestamp, "INVALID");
 
       // Set all leads with email as invalid
-      await query(
-        'UPDATE "Lead" SET "isEmailValid" = $1 WHERE "email" = $2',
-        ['INVALID', destination[0]]
+      await query('UPDATE "Lead" SET "isEmailValid" = $1 WHERE "email" = $2', [
+        "INVALID",
+        destination[0],
+      ]);
+      console.log(
+        `Updated all leads validation status for email ${destination[0]}`
       );
-      console.log(`Updated all leads validation status for email ${destination[0]}`);
-
-      // Handle updating from DELIVERY to BOUNCE
-      const deliveryEvent = await query(
-        'SELECT 1 FROM "EmailEvent" WHERE "emailId" = $1 AND "eventType" = $2',
-        [email.id, "DELIVERY"]
-      );
-      if (deliveryEvent.rowCount && deliveryEvent.rowCount > 0) {
-        await query(
-          'UPDATE "EmailEvent" SET "eventType" = $1, "timestamp" = $2 WHERE "emailId" = $3 AND "eventType" = $4',
-          [eventTypeUpper, timestamp, email.id, "DELIVERY"]
-        );
-        console.log(
-          `Updated event type from DELIVERY to BOUNCE for email ID ${email.id}`
-        );
-      }
     }
 
     // Log the event, with existing event checks handled in logEmailEvent
@@ -230,7 +221,6 @@ export async function processMessage(message: any) {
       ]);
       console.log(`Updated email ID ${email.id} status to SUPPRESS`);
     }
-
   } catch (error) {
     console.error(`Error processing message for email ID ${messageId}:`, error);
   } finally {
